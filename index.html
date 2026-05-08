@@ -2006,11 +2006,13 @@ function renderSettings() {
       <p>Logged in as @${escapeHtml(currentUser.username)}${currentUser.isAdmin ? ' · Admin' : ''}</p>
       <button class="logout-btn" id="logout-btn">Log out</button>
     </div>
-    <div class="settings-section">
-      <h3 style="color:var(--danger)">Danger zone</h3>
-      <p>Reset this browser's data — deletes every account, post, and follow saved here. Cannot be undone.</p>
-      <button class="logout-btn" id="reset-all-btn">Reset everything</button>
-    </div>
+    ${currentUser.isAdmin ? `
+      <div class="settings-section">
+        <h3 style="color:var(--danger)">Danger zone</h3>
+        <p>Reset this browser's data — deletes every account, post, and follow saved here. Cannot be undone.</p>
+        <button class="logout-btn" id="reset-all-btn">Reset everything</button>
+      </div>
+    ` : ''}
   `;
 
   if (isGold) {
@@ -2039,12 +2041,15 @@ function renderSettings() {
   $('logout-btn').addEventListener('click', () => {
     if (confirm('Log out?')) logOut();
   });
-  $('reset-all-btn').addEventListener('click', () => {
-    if (!confirm("Delete ALL users, posts, and follows from this browser? This can't be undone.")) return;
-    storage.remove(DB_KEY);
-    storage.remove(SESSION_KEY);
-    location.reload();
-  });
+  const resetBtn = $('reset-all-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (!confirm("Delete ALL users, posts, and follows from this browser? This can't be undone.")) return;
+      storage.remove(DB_KEY);
+      storage.remove(SESSION_KEY);
+      location.reload();
+    });
+  }
 }
 
 function renderSearch() {
