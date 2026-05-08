@@ -805,6 +805,37 @@
   }
   .aff-badge:hover { opacity: 0.85; }
 
+  .custom-badge {
+    display: inline-block;
+    background: var(--panel);
+    color: var(--text);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 4px;
+    vertical-align: middle;
+    border: 1px solid var(--border);
+    line-height: 1.4;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-custom-badge {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    width: 130px;
+    outline: none;
+    font-family: inherit;
+  }
+  .admin-custom-badge:focus { border-color: var(--accent); }
+
   /* Search */
   .search-wrap {
     padding: 8px 16px 12px;
@@ -1194,13 +1225,14 @@ function loadDB() {
   } catch (e) {
     db = { users: {}, posts: [] };
   }
-  // Migration: ensure all users have admin/affiliation/avatar/follow fields
+  // Migration: ensure all users have admin/affiliation/avatar/follow/custom-badge fields
   for (const u of Object.values(db.users)) {
     if (typeof u.isAdmin === 'undefined') u.isAdmin = false;
     if (typeof u.affiliatedTo === 'undefined') u.affiliatedTo = null;
     if (typeof u.avatarImage === 'undefined') u.avatarImage = null;
     if (typeof u.avatarColor === 'undefined') u.avatarColor = null;
     if (!Array.isArray(u.following)) u.following = [];
+    if (typeof u.customBadge === 'undefined') u.customBadge = null;
   }
   // If users exist but no admin yet, promote earliest-joined user
   const userList = Object.values(db.users);
@@ -1326,6 +1358,11 @@ function affiliationBadge(user) {
   return `<span class="aff-badge profile-link" data-user="${escapeHtml(org.username)}" title="Affiliated with ${escapeHtml(org.name)}" style="background:${color}">${escapeHtml(initials(org.name))}</span>`;
 }
 
+function customBadge(user) {
+  if (!user || !user.customBadge) return '';
+  return `<span class="custom-badge" title="${escapeHtml(user.customBadge)}">${escapeHtml(user.customBadge)}</span>`;
+}
+
 /* =========================================================
    Auth
    ========================================================= */
@@ -1378,6 +1415,7 @@ $('auth-form').addEventListener('submit', (e) => {
       affiliatedTo: null,
       avatarImage: null,
       avatarColor: null,
+      customBadge: null,
       joinedAt: Date.now(),
       following: [],
     };
@@ -1421,7 +1459,7 @@ function renderMeCard() {
   card.innerHTML = `
     ${avatarHTML(currentUser)}
     <div class="meta">
-      <div class="name">${escapeHtml(currentUser.name)}${badgeSVG(currentUser.verified)}${affiliationBadge(currentUser)}</div>
+      <div class="name">${escapeHtml(currentUser.name)}${badgeSVG(currentUser.verified)}${affiliationBadge(currentUser)}${customBadge(currentUser)}</div>
       <div class="handle">@${escapeHtml(currentUser.username)}</div>
     </div>
   `;
@@ -1568,6 +1606,7 @@ function renderTweetCard({ kind, post, by }) {
           <span class="name profile-link" data-user="${escapeHtml(author.username)}">${escapeHtml(author.name)}</span>
           ${badgeSVG(author.verified)}
           ${affiliationBadge(author)}
+          ${customBadge(author)}
           <span class="handle profile-link" data-user="${escapeHtml(author.username)}">@${escapeHtml(author.username)}</span>
           <span class="dot">·</span>
           <span class="time">${timeAgo(post.createdAt)}</span>
@@ -1716,6 +1755,7 @@ function openReply(parent) {
             <span class="name">${escapeHtml(author.name)}</span>
             ${badgeSVG(author.verified)}
             ${affiliationBadge(author)}
+          ${customBadge(author)}
             <span class="handle">@${escapeHtml(author.username)}</span>
             <span class="dot">·</span>
             <span class="time">${timeAgo(parent.createdAt)}</span>
@@ -1819,6 +1859,7 @@ function renderProfile() {
         <span>${escapeHtml(u.name)}</span>
         ${badgeSVG(u.verified)}
         ${affiliationBadge(u)}
+        ${customBadge(u)}
       </div>
       <div class="profile-handle">@${escapeHtml(u.username)}</div>
       ${u.bio ? `<div class="profile-bio">${escapeHtml(u.bio)}</div>` : ''}
@@ -1880,7 +1921,7 @@ function openFollowList(username, type) {
           <div class="search-user" data-user="${escapeHtml(u.username)}">
             ${avatarHTML(u)}
             <div class="meta">
-              <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
+              <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
               <div class="handle">@${escapeHtml(u.username)}</div>
             </div>
           </div>
@@ -2034,7 +2075,7 @@ function renderSettings() {
             <div class="affiliate-row">
               ${avatarHTML(u)}
               <div style="flex:1;min-width:0">
-                <div style="font-weight:700;display:flex;align-items:center;gap:4px">${escapeHtml(u.name)}${badgeSVG(u.verified)}</div>
+                <div style="font-weight:700;display:flex;align-items:center;gap:4px">${escapeHtml(u.name)}${badgeSVG(u.verified)}${customBadge(u)}</div>
                 <div style="color:var(--muted);font-size:13px">@${escapeHtml(u.username)}</div>
               </div>
               <button class="aff-remove" data-user="${escapeHtml(u.username)}">Remove</button>
@@ -2166,7 +2207,7 @@ function performSearch() {
       <div class="search-user profile-link" data-user="${escapeHtml(u.username)}">
         ${avatarHTML(u)}
         <div class="meta">
-          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
+          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
           <div class="handle">@${escapeHtml(u.username)}</div>
         </div>
       </div>
@@ -2205,7 +2246,7 @@ function renderAdmin() {
         <div class="admin-row" data-user="${escapeHtml(u.username)}">
           ${avatarHTML(u)}
           <div class="meta">
-            <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
+            <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
             <div class="handle">@${escapeHtml(u.username)}</div>
           </div>
           <select class="admin-badge" data-user="${escapeHtml(u.username)}">
@@ -2213,6 +2254,7 @@ function renderAdmin() {
             <option value="blue" ${u.verified === 'blue' ? 'selected' : ''}>Blue</option>
             <option value="gold" ${u.verified === 'gold' ? 'selected' : ''}>Gold</option>
           </select>
+          <input type="text" class="admin-custom-badge" data-user="${escapeHtml(u.username)}" value="${escapeHtml(u.customBadge || '')}" placeholder="Custom badge" maxlength="20" />
           <label class="adm">
             <input type="checkbox" class="admin-toggle" data-user="${escapeHtml(u.username)}" ${u.isAdmin ? 'checked' : ''} ${(isMe || lastAdmin) ? 'disabled' : ''} />
             Admin
@@ -2263,6 +2305,22 @@ function renderAdmin() {
       saveDB(db);
       renderAdmin();
       showToast(cb.checked ? 'Promoted @' + target.username : 'Demoted @' + target.username);
+    });
+  });
+  document.querySelectorAll('.admin-custom-badge').forEach(input => {
+    function save() {
+      const target = db.users[input.dataset.user];
+      if (!target) return;
+      const newValue = input.value.trim().slice(0, 20);
+      const old = target.customBadge || '';
+      if (newValue === old) return;
+      target.customBadge = newValue || null;
+      saveDB(db);
+      showToast(newValue ? 'Set badge for @' + target.username : 'Cleared badge for @' + target.username);
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     });
   });
 
@@ -2343,7 +2401,7 @@ function renderRightSidebar() {
     ? '<div class="panel-item"><div class="small">No suggestions right now.</div></div>'
     : others.map(u => `
         <div class="panel-item profile-link" data-user="${escapeHtml(u.username)}">
-          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
+          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
           <div class="followers">@${escapeHtml(u.username)}</div>
         </div>
       `).join('');
