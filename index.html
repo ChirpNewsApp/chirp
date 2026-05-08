@@ -850,73 +850,6 @@
   }
   .search-user .meta .handle { color: var(--muted); font-size: 14px; }
 
-  /* AI chat */
-  .ai-messages {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    min-height: calc(100vh - 200px);
-  }
-  .ai-msg {
-    max-width: 85%;
-    padding: 10px 14px;
-    border-radius: 18px;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    line-height: 1.4;
-    font-size: 15px;
-  }
-  .ai-msg.user {
-    align-self: flex-end;
-    background: var(--accent);
-    color: white;
-    border-bottom-right-radius: 4px;
-  }
-  .ai-msg.assistant {
-    align-self: flex-start;
-    background: var(--panel);
-    color: var(--text);
-    border-bottom-left-radius: 4px;
-  }
-  .ai-msg.thinking { opacity: 0.6; font-style: italic; }
-  .ai-input-wrap {
-    position: sticky;
-    bottom: 0;
-    display: flex;
-    gap: 8px;
-    padding: 12px 16px;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid var(--border);
-    align-items: center;
-    z-index: 5;
-  }
-  .ai-input-wrap input {
-    flex: 1;
-    background: var(--panel);
-    border: 1px solid transparent;
-    border-radius: 999px;
-    padding: 12px 16px;
-    font-size: 15px;
-    color: var(--text);
-    outline: none;
-  }
-  .ai-input-wrap input:focus { border-color: var(--accent); background: var(--bg); }
-  .ai-input-wrap button {
-    background: var(--accent);
-    color: white;
-    font-weight: 700;
-    padding: 10px 20px;
-    border-radius: 999px;
-    font-size: 15px;
-  }
-  .ai-input-wrap button:hover { background: var(--accent-hover); }
-  .ai-input-wrap button:disabled { opacity: 0.5; cursor: not-allowed; }
-  @media (max-width: 650px) {
-    .ai-input-wrap { bottom: 56px; }
-  }
-
   /* Floating action button (mobile) */
   .post-fab {
     display: none;
@@ -1074,10 +1007,6 @@
         <div class="nav-item" data-route="search">
           <svg viewBox="0 0 24 24"><path d="M10.25 3.75c-3.59 0-6.5 2.91-6.5 6.5s2.91 6.5 6.5 6.5c1.795 0 3.419-.726 4.596-1.904 1.178-1.177 1.904-2.801 1.904-4.596 0-3.59-2.91-6.5-6.5-6.5zm-8.5 6.5c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5c0 1.986-.682 3.815-1.824 5.262l4.781 4.781-1.414 1.414-4.781-4.781c-1.447 1.142-3.276 1.824-5.262 1.824-4.694 0-8.5-3.806-8.5-8.5z"/></svg>
           <span class="nav-label">Search</span>
-        </div>
-        <div class="nav-item" data-route="ai">
-          <svg viewBox="0 0 24 24"><path d="M12 2L9.5 8.5 3 11l6.5 2.5L12 20l2.5-6.5L21 11l-6.5-2.5L12 2zm6 14l-1 2.5L14.5 19l2.5 1 1 2.5 1-2.5 2.5-1-2.5-.5L18 16z"/></svg>
-          <span class="nav-label">AI</span>
         </div>
         <div class="nav-item" data-route="profile">
           <svg viewBox="0 0 24 24"><path d="M5.651 19h12.698c-.337-1.8-1.023-3.21-1.945-4.19C15.318 13.65 13.838 13 12 13s-3.317.65-4.404 1.81c-.922.98-1.608 2.39-1.945 4.19zm.486-5.56C7.627 11.85 9.648 11 12 11s4.373.85 5.863 2.44c1.477 1.58 2.366 3.8 2.632 6.46l.11 1.1H3.395l.11-1.1c.266-2.66 1.155-4.88 2.632-6.46zM12 4c-1.105 0-2 .9-2 2s.895 2 2 2 2-.9 2-2-.895-2-2-2zM8 6c0-2.21 1.791-4 4-4s4 1.79 4 4-1.791 4-4 4-4-1.79-4-4z"/></svg>
@@ -1519,7 +1448,6 @@ function navigate(route, opts = {}) {
 function render() {
   if (currentRoute === 'home') return renderHome();
   if (currentRoute === 'search') return renderSearch();
-  if (currentRoute === 'ai') return renderAI();
   if (currentRoute === 'profile') return renderProfile();
   if (currentRoute === 'settings') return renderSettings();
   if (currentRoute === 'admin') return renderAdmin();
@@ -2131,15 +2059,6 @@ function renderSettings() {
     </div>
     ${affiliatesHTML}
     <div class="settings-section">
-      <h3>Chirp AI</h3>
-      <p>Add your free Google Gemini API key to enable the AI chat. The key is stored only in this browser — never uploaded or synced. Get a free key at <span style="color:var(--accent)">aistudio.google.com</span> — no credit card, 1500 messages/day free.</p>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <input type="password" id="ai-key-input" placeholder="AIza…" value="${escapeHtml(getAiKey())}" style="flex:1" />
-        <button class="save-btn" id="ai-key-save">Save</button>
-      </div>
-      ${getAiKey() ? '<button class="logout-btn" id="ai-key-clear" style="margin-top:10px">Remove key</button>' : ''}
-    </div>
-    <div class="settings-section">
       <h3>Account</h3>
       <p>Logged in as @${escapeHtml(currentUser.username)}${currentUser.isAdmin ? ' · Admin' : ''}</p>
       <button class="logout-btn" id="logout-btn">Log out</button>
@@ -2176,18 +2095,6 @@ function renderSettings() {
       });
     });
   }
-  $('ai-key-save').addEventListener('click', () => {
-    const k = $('ai-key-input').value.trim();
-    setAiKey(k);
-    showToast(k ? 'API key saved' : 'API key cleared');
-    renderSettings();
-  });
-  const aiKeyClear = $('ai-key-clear');
-  if (aiKeyClear) aiKeyClear.addEventListener('click', () => {
-    setAiKey('');
-    showToast('API key removed');
-    renderSettings();
-  });
   $('logout-btn').addEventListener('click', () => {
     if (confirm('Log out?')) logOut();
   });
@@ -2200,125 +2107,6 @@ function renderSettings() {
       location.reload();
     });
   }
-}
-
-/* ===== AI chat (Google Gemini — free) ===== */
-const AI_KEY_STORAGE = 'chirp.aiKey';
-const AI_MODEL = 'gemini-2.0-flash';
-let aiMessages = []; // {role, content, thinking?}
-
-function getAiKey() { return storage.get(AI_KEY_STORAGE) || ''; }
-function setAiKey(k) {
-  if (k) storage.set(AI_KEY_STORAGE, k);
-  else storage.remove(AI_KEY_STORAGE);
-}
-
-function renderAI() {
-  const main = $('main-content');
-  if (!getAiKey()) {
-    main.innerHTML = `
-      <div class="top-bar"><h2>Chirp AI</h2></div>
-      <div class="empty" style="padding:60px 20px">
-        <h3>Add your API key to start chatting</h3>
-        <p style="max-width:440px;margin:8px auto;color:var(--muted);line-height:1.5">
-          Chirp AI runs on Claude Opus 4.7. Add your Anthropic API key in Settings to enable it.
-          Your key stays in your browser only — it's never uploaded or shared.
-        </p>
-        <button class="save-btn" id="ai-go-settings" style="margin-top:16px">Go to Settings</button>
-      </div>
-    `;
-    $('ai-go-settings').addEventListener('click', () => navigate('settings'));
-    return;
-  }
-
-  main.innerHTML = `
-    <div class="top-bar">
-      <h2>Chirp AI</h2>
-    </div>
-    <div id="ai-messages" class="ai-messages">
-      ${aiMessages.length === 0 ? `
-        <div style="text-align:center;color:var(--muted);padding:40px 20px;margin:auto 0">
-          <h3 style="color:var(--text);font-size:22px">Ask me anything</h3>
-          <p style="margin-top:8px">Powered by Google Gemini · Free</p>
-        </div>
-      ` : aiMessages.map(m => `
-        <div class="ai-msg ${m.role}${m.thinking ? ' thinking' : ''}">${escapeHtml(m.content)}</div>
-      `).join('')}
-    </div>
-    <div class="ai-input-wrap">
-      <input type="text" id="ai-input" placeholder="Message Chirp AI…" autocomplete="off" />
-      <button id="ai-send">Send</button>
-      ${aiMessages.length > 0 ? '<button id="ai-clear" style="background:transparent;color:var(--muted);padding:8px 12px" title="Clear chat">Clear</button>' : ''}
-    </div>
-  `;
-
-  const input = $('ai-input');
-  const sendBtn = $('ai-send');
-
-  async function send() {
-    const text = input.value.trim();
-    if (!text || sendBtn.disabled) return;
-    input.value = '';
-    sendBtn.disabled = true;
-    aiMessages.push({ role: 'user', content: text });
-    aiMessages.push({ role: 'assistant', content: 'Thinking…', thinking: true });
-    renderAI();
-
-    try {
-      const contents = aiMessages.filter(m => !m.thinking).map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      }));
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent?key=${encodeURIComponent(getAiKey())}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: {
-            parts: [{ text: "You are Chirp AI, a friendly assistant inside Chirp — a small Twitter-style social platform built by the user. Keep responses conversational and concise (a few sentences usually). You can help with writing posts, brainstorming, coding, general questions, etc." }],
-          },
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
-        }),
-      });
-      const data = await res.json();
-      aiMessages.pop(); // remove "Thinking…"
-      const reply = data.candidates && data.candidates[0] && data.candidates[0].content
-        && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
-        && data.candidates[0].content.parts[0].text;
-      if (reply) {
-        aiMessages.push({ role: 'assistant', content: reply });
-      } else if (data.error) {
-        aiMessages.push({ role: 'assistant', content: 'Error: ' + (data.error.message || data.error.code || 'unknown') });
-      } else {
-        aiMessages.push({ role: 'assistant', content: 'No response received.' });
-      }
-    } catch (e) {
-      aiMessages.pop();
-      aiMessages.push({ role: 'assistant', content: 'Network error: ' + e.message });
-    }
-    renderAI();
-    setTimeout(() => $('ai-input')?.focus(), 50);
-  }
-
-  sendBtn.addEventListener('click', send);
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  });
-  const clearBtn = $('ai-clear');
-  if (clearBtn) clearBtn.addEventListener('click', () => {
-    aiMessages = [];
-    renderAI();
-  });
-
-  setTimeout(() => {
-    input.focus();
-    const m = $('ai-messages');
-    if (m) m.scrollTop = m.scrollHeight;
-  }, 50);
 }
 
 function renderSearch() {
