@@ -1266,7 +1266,11 @@ function affiliationBadge(user) {
   if (!user || !user.affiliatedTo) return '';
   const org = db.users[user.affiliatedTo];
   if (!org || org.verified !== 'gold') return '';
-  return `<span class="aff-badge profile-link" data-user="${escapeHtml(org.username)}" title="Affiliated with ${escapeHtml(org.name)}" style="background:${avatarColor(org.username)}">${escapeHtml(initials(org.name))}</span>`;
+  if (org.avatarImage) {
+    return `<span class="aff-badge profile-link" data-user="${escapeHtml(org.username)}" title="Affiliated with ${escapeHtml(org.name)}" style="background-image:url('${org.avatarImage}');background-size:cover;background-position:center;background-color:#000"></span>`;
+  }
+  const color = org.avatarColor || avatarColor(org.username);
+  return `<span class="aff-badge profile-link" data-user="${escapeHtml(org.username)}" title="Affiliated with ${escapeHtml(org.name)}" style="background:${color}">${escapeHtml(initials(org.name))}</span>`;
 }
 
 /* =========================================================
