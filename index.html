@@ -763,6 +763,47 @@
     cursor: pointer;
     accent-color: var(--accent);
   }
+  .admin-action-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .admin-action-btn.kick:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(212, 160, 23, 0.1);
+  }
+  .admin-action-btn.ban {
+    color: var(--danger);
+    border-color: rgba(244, 33, 46, 0.4);
+  }
+  .admin-action-btn.ban:hover {
+    background: rgba(244, 33, 46, 0.15);
+  }
+  .admin-action-btn.unban {
+    color: var(--repost);
+    border-color: rgba(0, 186, 124, 0.4);
+  }
+  .admin-action-btn.unban:hover {
+    background: rgba(0, 186, 124, 0.15);
+  }
+  .banned-tag {
+    background: rgba(244, 33, 46, 0.15);
+    color: var(--danger);
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    letter-spacing: 0.5px;
+  }
   .affiliate-row {
     display: flex;
     align-items: center;
@@ -805,36 +846,6 @@
   }
   .aff-badge:hover { opacity: 0.85; }
 
-  .custom-badge {
-    display: inline-block;
-    background: var(--panel);
-    color: var(--text);
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    margin-left: 4px;
-    vertical-align: middle;
-    border: 1px solid var(--border);
-    line-height: 1.4;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .admin-custom-badge {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 14px;
-    width: 130px;
-    outline: none;
-    font-family: inherit;
-  }
-  .admin-custom-badge:focus { border-color: var(--accent); }
 
   /* Search */
   .search-wrap {
@@ -1225,14 +1236,15 @@ function loadDB() {
   } catch (e) {
     db = { users: {}, posts: [] };
   }
-  // Migration: ensure all users have admin/affiliation/avatar/follow/custom-badge fields
+  // Migration: ensure all users have admin/affiliation/avatar/follow/moderation fields
   for (const u of Object.values(db.users)) {
     if (typeof u.isAdmin === 'undefined') u.isAdmin = false;
     if (typeof u.affiliatedTo === 'undefined') u.affiliatedTo = null;
     if (typeof u.avatarImage === 'undefined') u.avatarImage = null;
     if (typeof u.avatarColor === 'undefined') u.avatarColor = null;
     if (!Array.isArray(u.following)) u.following = [];
-    if (typeof u.customBadge === 'undefined') u.customBadge = null;
+    if (typeof u.banned === 'undefined') u.banned = false;
+    if (typeof u.kickedAt === 'undefined') u.kickedAt = 0;
   }
   // If users exist but no admin yet, promote earliest-joined user
   const userList = Object.values(db.users);
@@ -1245,9 +1257,17 @@ function saveDB(db) {
   storage.set(DB_KEY, JSON.stringify(db));
   cloudPush();
 }
+const SESSION_TS_KEY = 'chirp.sessionTs';
 function getSession() { return storage.get(SESSION_KEY); }
-function setSession(u) { storage.set(SESSION_KEY, u); }
-function clearSession() { storage.remove(SESSION_KEY); }
+function getSessionTs() { return parseInt(storage.get(SESSION_TS_KEY) || '0', 10); }
+function setSession(u) {
+  storage.set(SESSION_KEY, u);
+  storage.set(SESSION_TS_KEY, String(Date.now()));
+}
+function clearSession() {
+  storage.remove(SESSION_KEY);
+  storage.remove(SESSION_TS_KEY);
+}
 
 /* Simple synchronous hash so passwords aren't stored as bare plaintext.
    Note: localStorage demo only — not real security. */
@@ -1319,11 +1339,8 @@ function showToast(msg) {
    Verified badge SVGs
    ========================================================= */
 const BADGE_PATH = 'M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.67.88-3.33 2.19c-1.4-.46-2.91-.2-3.92.81s-1.26 2.52-.8 3.91c-1.31.67-2.2 1.91-2.2 3.34s.89 2.67 2.2 3.34c-.46 1.39-.21 2.9.8 3.91s2.52 1.26 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34zm-11.71 4.2L6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z';
-function badgeSVG(type, options) {
+function badgeSVG(type) {
   if (!type || type === 'none') return '';
-  // The verified badge is hidden everywhere by default — only shown when
-  // a caller passes { show: true } (currently only the profile page).
-  if (!options || options.show !== true) return '';
   const cls = type === 'gold' ? 'gold' : 'blue';
   return `<svg class="badge ${cls}" viewBox="0 0 24 24" aria-label="Verified" role="img"><path d="${BADGE_PATH}"/></svg>`;
 }
@@ -1361,10 +1378,6 @@ function affiliationBadge(user) {
   return `<span class="aff-badge profile-link" data-user="${escapeHtml(org.username)}" title="Affiliated with ${escapeHtml(org.name)}" style="background:${color}">${escapeHtml(initials(org.name))}</span>`;
 }
 
-function customBadge(user) {
-  if (!user || !user.customBadge) return '';
-  return `<span class="custom-badge" title="${escapeHtml(user.customBadge)}">${escapeHtml(user.customBadge)}</span>`;
-}
 
 /* =========================================================
    Auth
@@ -1418,7 +1431,8 @@ $('auth-form').addEventListener('submit', (e) => {
       affiliatedTo: null,
       avatarImage: null,
       avatarColor: null,
-      customBadge: null,
+      banned: false,
+      kickedAt: 0,
       joinedAt: Date.now(),
       following: [],
     };
@@ -1429,6 +1443,9 @@ $('auth-form').addEventListener('submit', (e) => {
     const u = db.users[username];
     if (!u || u.passwordHash !== hash) {
       return fail('Invalid username or password.');
+    }
+    if (u.banned) {
+      return fail('This account has been banned from Chirp.');
     }
     setSession(username);
     enterApp();
@@ -1462,7 +1479,7 @@ function renderMeCard() {
   card.innerHTML = `
     ${avatarHTML(currentUser)}
     <div class="meta">
-      <div class="name">${escapeHtml(currentUser.name)}${badgeSVG(currentUser.verified)}${affiliationBadge(currentUser)}${customBadge(currentUser)}</div>
+      <div class="name">${escapeHtml(currentUser.name)}${badgeSVG(currentUser.verified)}${affiliationBadge(currentUser)}</div>
       <div class="handle">@${escapeHtml(currentUser.username)}</div>
     </div>
   `;
@@ -1542,13 +1559,15 @@ function renderFeed() {
   const items = [];
   for (const post of db.posts) {
     if (post.deleted) continue;
+    const author = db.users[post.authorUsername];
+    if (author && author.banned) continue;
     if (visibleAuthor(post.authorUsername)) {
       items.push({ kind: 'post', post, t: post.createdAt });
     }
     for (const reposterUsername of (post.reposts || [])) {
       if (!visibleAuthor(reposterUsername)) continue;
       const reposter = db.users[reposterUsername];
-      if (reposter) {
+      if (reposter && !reposter.banned) {
         items.push({ kind: 'repost', post, by: reposter, t: post.repostTimes?.[reposterUsername] || post.createdAt });
       }
     }
@@ -1609,7 +1628,6 @@ function renderTweetCard({ kind, post, by }) {
           <span class="name profile-link" data-user="${escapeHtml(author.username)}">${escapeHtml(author.name)}</span>
           ${badgeSVG(author.verified)}
           ${affiliationBadge(author)}
-          ${customBadge(author)}
           <span class="handle profile-link" data-user="${escapeHtml(author.username)}">@${escapeHtml(author.username)}</span>
           <span class="dot">·</span>
           <span class="time">${timeAgo(post.createdAt)}</span>
@@ -1758,7 +1776,6 @@ function openReply(parent) {
             <span class="name">${escapeHtml(author.name)}</span>
             ${badgeSVG(author.verified)}
             ${affiliationBadge(author)}
-          ${customBadge(author)}
             <span class="handle">@${escapeHtml(author.username)}</span>
             <span class="dot">·</span>
             <span class="time">${timeAgo(parent.createdAt)}</span>
@@ -1860,9 +1877,8 @@ function renderProfile() {
       </div>
       <div class="profile-name">
         <span>${escapeHtml(u.name)}</span>
-        ${badgeSVG(u.verified, { show: true })}
+        ${badgeSVG(u.verified)}
         ${affiliationBadge(u)}
-        ${customBadge(u)}
       </div>
       <div class="profile-handle">@${escapeHtml(u.username)}</div>
       ${u.bio ? `<div class="profile-bio">${escapeHtml(u.bio)}</div>` : ''}
@@ -1924,7 +1940,7 @@ function openFollowList(username, type) {
           <div class="search-user" data-user="${escapeHtml(u.username)}">
             ${avatarHTML(u)}
             <div class="meta">
-              <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
+              <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
               <div class="handle">@${escapeHtml(u.username)}</div>
             </div>
           </div>
@@ -2078,7 +2094,7 @@ function renderSettings() {
             <div class="affiliate-row">
               ${avatarHTML(u)}
               <div style="flex:1;min-width:0">
-                <div style="font-weight:700;display:flex;align-items:center;gap:4px">${escapeHtml(u.name)}${badgeSVG(u.verified)}${customBadge(u)}</div>
+                <div style="font-weight:700;display:flex;align-items:center;gap:4px">${escapeHtml(u.name)}${badgeSVG(u.verified)}</div>
                 <div style="color:var(--muted);font-size:13px">@${escapeHtml(u.username)}</div>
               </div>
               <button class="aff-remove" data-user="${escapeHtml(u.username)}">Remove</button>
@@ -2187,11 +2203,13 @@ function performSearch() {
     return;
   }
   const userMatches = Object.values(db.users).filter(u =>
-    u.username.toLowerCase().includes(q) || u.name.toLowerCase().includes(q)
+    !u.banned && (u.username.toLowerCase().includes(q) || u.name.toLowerCase().includes(q))
   ).slice(0, 20);
-  const postMatches = db.posts.filter(p =>
-    !p.deleted && p.text.toLowerCase().includes(q)
-  ).sort((a, b) => b.createdAt - a.createdAt).slice(0, 50);
+  const postMatches = db.posts.filter(p => {
+    if (p.deleted || !p.text.toLowerCase().includes(q)) return false;
+    const author = db.users[p.authorUsername];
+    return author && !author.banned;
+  }).sort((a, b) => b.createdAt - a.createdAt).slice(0, 50);
 
   if (userMatches.length === 0 && postMatches.length === 0) {
     results.innerHTML = `
@@ -2210,7 +2228,7 @@ function performSearch() {
       <div class="search-user profile-link" data-user="${escapeHtml(u.username)}">
         ${avatarHTML(u)}
         <div class="meta">
-          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
+          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
           <div class="handle">@${escapeHtml(u.username)}</div>
         </div>
       </div>
@@ -2249,7 +2267,7 @@ function renderAdmin() {
         <div class="admin-row" data-user="${escapeHtml(u.username)}">
           ${avatarHTML(u)}
           <div class="meta">
-            <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
+            <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${u.banned ? '<span class="banned-tag">BANNED</span>' : ''}</div>
             <div class="handle">@${escapeHtml(u.username)}</div>
           </div>
           <select class="admin-badge" data-user="${escapeHtml(u.username)}">
@@ -2257,11 +2275,14 @@ function renderAdmin() {
             <option value="blue" ${u.verified === 'blue' ? 'selected' : ''}>Blue</option>
             <option value="gold" ${u.verified === 'gold' ? 'selected' : ''}>Gold</option>
           </select>
-          <input type="text" class="admin-custom-badge" data-user="${escapeHtml(u.username)}" value="${escapeHtml(u.customBadge || '')}" placeholder="Custom badge" maxlength="20" />
           <label class="adm">
             <input type="checkbox" class="admin-toggle" data-user="${escapeHtml(u.username)}" ${u.isAdmin ? 'checked' : ''} ${(isMe || lastAdmin) ? 'disabled' : ''} />
             Admin
           </label>
+          ${!isMe ? `
+            <button class="admin-action-btn kick" data-act="kick" data-user="${escapeHtml(u.username)}">Kick</button>
+            <button class="admin-action-btn ${u.banned ? 'unban' : 'ban'}" data-act="${u.banned ? 'unban' : 'ban'}" data-user="${escapeHtml(u.username)}">${u.banned ? 'Unban' : 'Ban'}</button>
+          ` : ''}
         </div>
       `;
     }).join('')}
@@ -2310,20 +2331,30 @@ function renderAdmin() {
       showToast(cb.checked ? 'Promoted @' + target.username : 'Demoted @' + target.username);
     });
   });
-  document.querySelectorAll('.admin-custom-badge').forEach(input => {
-    function save() {
-      const target = db.users[input.dataset.user];
+  document.querySelectorAll('.admin-action-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = db.users[btn.dataset.user];
       if (!target) return;
-      const newValue = input.value.trim().slice(0, 20);
-      const old = target.customBadge || '';
-      if (newValue === old) return;
-      target.customBadge = newValue || null;
-      saveDB(db);
-      showToast(newValue ? 'Set badge for @' + target.username : 'Cleared badge for @' + target.username);
-    }
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      const act = btn.dataset.act;
+      if (act === 'kick') {
+        if (!confirm(`Kick @${target.username}? They'll be logged out and can sign in again.`)) return;
+        target.kickedAt = Date.now();
+        saveDB(db);
+        renderAdmin();
+        showToast('Kicked @' + target.username);
+      } else if (act === 'ban') {
+        if (!confirm(`Ban @${target.username}? They won't be able to log in or post.`)) return;
+        target.banned = true;
+        target.kickedAt = Date.now();
+        saveDB(db);
+        renderAdmin();
+        showToast('Banned @' + target.username);
+      } else if (act === 'unban') {
+        target.banned = false;
+        saveDB(db);
+        renderAdmin();
+        showToast('Unbanned @' + target.username);
+      }
     });
   });
 
@@ -2396,15 +2427,15 @@ function renderRightSidebar() {
         </div>
       `).join('');
 
-  // Suggestions are real users you haven't followed
+  // Suggestions are real users you haven't followed (banned users hidden)
   const others = Object.values(db.users)
-    .filter(u => u.username !== currentUser.username && !isFollowing(u.username))
+    .filter(u => u.username !== currentUser.username && !isFollowing(u.username) && !u.banned)
     .slice(0, 3);
   $('suggestions').innerHTML = others.length === 0
     ? '<div class="panel-item"><div class="small">No suggestions right now.</div></div>'
     : others.map(u => `
         <div class="panel-item profile-link" data-user="${escapeHtml(u.username)}">
-          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}${customBadge(u)}</div>
+          <div class="name">${escapeHtml(u.name)}${badgeSVG(u.verified)}${affiliationBadge(u)}</div>
           <div class="followers">@${escapeHtml(u.username)}</div>
         </div>
       `).join('');
@@ -2439,7 +2470,18 @@ function renderRightSidebar() {
   }
   const session = getSession();
   if (session && db.users[session]) {
-    enterApp();
+    const u = db.users[session];
+    if (u.banned) {
+      clearSession();
+      setAuthMode(false);
+      setTimeout(() => showToast('Your account has been banned'), 100);
+    } else if ((u.kickedAt || 0) > getSessionTs()) {
+      clearSession();
+      setAuthMode(false);
+      setTimeout(() => showToast("You've been kicked from Chirp"), 100);
+    } else {
+      enterApp();
+    }
   } else {
     setAuthMode(false);
   }
