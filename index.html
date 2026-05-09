@@ -426,6 +426,12 @@
     white-space: pre-wrap;
     word-wrap: break-word;
   }
+  .mention, .hashtag {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .mention:hover, .hashtag:hover { text-decoration: underline; }
   .tweet .reply-context {
     color: var(--muted);
     font-size: 14px;
@@ -1166,7 +1172,7 @@ const storage = (() => {
 const DB_KEY = 'chirp.db.v1';
 const SESSION_KEY = 'chirp.session.v1';
 const DB_VERSION_KEY = 'chirp.version';
-const DB_VERSION = '2'; // bump this number to force a wipe on next load
+const DB_VERSION = '3'; // bump this number to force a wipe on next load
 
 /* =========================================================
    Cloud sync (optional, via JSONBin free tier)
@@ -1184,6 +1190,8 @@ const CLOUD = {
 };
 const CLOUD_ENABLED = !!(CLOUD.binId && CLOUD.masterKey);
 let _cloudPushTimer = null;
+let lastSyncSuccess = 0;
+let lastSyncError = null;
 
 async function cloudPull() {
   if (!CLOUD_ENABLED) return null;
@@ -1191,14 +1199,31 @@ async function cloudPull() {
     const res = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}/latest`, {
       headers: { 'X-Master-Key': CLOUD.masterKey, 'X-Bin-Meta': 'false' }
     });
-    if (!res.ok) return null;
-    const remote = await res.json();
-    if (remote && typeof remote.users === 'object' && remote.users !== null && Array.isArray(remote.posts)) {
-      return remote;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      lastSyncError = `Pull HTTP ${res.status}${errText ? ': ' + errText.slice(0, 120) : ''}`;
+      console.warn('Cloud pull failed:', lastSyncError);
+      return null;
     }
-    if (remote && remote.record && typeof remote.record.users === 'object') return remote.record;
-  } catch (e) { console.warn('Cloud pull failed:', e); }
-  return null;
+    const remote = await res.json();
+    let record = null;
+    if (remote && typeof remote.users === 'object' && remote.users !== null && Array.isArray(remote.posts)) {
+      record = remote;
+    } else if (remote && remote.record && typeof remote.record.users === 'object') {
+      record = remote.record;
+    }
+    if (record) {
+      lastSyncSuccess = Date.now();
+      lastSyncError = null;
+      return record;
+    }
+    lastSyncError = 'Unexpected response format from JSONBin';
+    return null;
+  } catch (e) {
+    lastSyncError = 'Pull network error: ' + e.message;
+    console.warn('Cloud pull failed:', e);
+    return null;
+  }
 }
 
 function cloudPush() {
@@ -1206,7 +1231,7 @@ function cloudPush() {
   clearTimeout(_cloudPushTimer);
   _cloudPushTimer = setTimeout(async () => {
     try {
-      await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, {
+      const res = await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1214,9 +1239,21 @@ function cloudPush() {
         },
         body: JSON.stringify(db)
       });
-    } catch (e) { console.warn('Cloud push failed:', e); }
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        lastSyncError = `Push HTTP ${res.status}${errText ? ': ' + errText.slice(0, 120) : ''}`;
+        console.warn('Cloud push failed:', lastSyncError);
+      } else {
+        lastSyncSuccess = Date.now();
+        lastSyncError = null;
+      }
+    } catch (e) {
+      lastSyncError = 'Push network error: ' + e.message;
+      console.warn('Cloud push failed:', e);
+    }
   }, 1200);
 }
+let _pendingCloudWipe = false;
 // Auto-wipe if version mismatch
 (function autoReset() {
   try {
@@ -1224,6 +1261,7 @@ function cloudPush() {
       storage.remove(DB_KEY);
       storage.remove(SESSION_KEY);
       storage.set(DB_VERSION_KEY, DB_VERSION);
+      _pendingCloudWipe = true;
     }
   } catch (e) {}
 })();
@@ -1287,6 +1325,7 @@ let currentUser = null;
 let currentRoute = 'home';
 let viewingProfile = null; // username of profile being viewed
 let homeTab = 'for-you'; // 'for-you' or 'following'
+let pendingSearchQuery = null; // pre-filled search query (e.g. from clicking a hashtag)
 
 /* =========================================================
    Helpers
@@ -1296,6 +1335,20 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
+}
+function renderPostText(text) {
+  // Escape first, then linkify @mentions (only if user exists) and #hashtags
+  return escapeHtml(text)
+    .replace(/@([a-z0-9_]{3,20})\b/gi, (m, name) => {
+      const lower = name.toLowerCase();
+      if (db.users[lower] && !db.users[lower].banned) {
+        return `<span class="mention" data-user="${escapeHtml(lower)}">@${escapeHtml(name)}</span>`;
+      }
+      return m;
+    })
+    .replace(/#([a-zA-Z0-9_]{1,30})/g, (m, tag) =>
+      `<span class="hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</span>`
+    );
 }
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -1497,6 +1550,7 @@ $('me-card').addEventListener('click', () => navigate('profile'));
 function navigate(route, opts = {}) {
   currentRoute = route;
   if (route === 'profile') viewingProfile = opts.username || currentUser.username;
+  if (route === 'search' && opts.query) pendingSearchQuery = opts.query;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.route === route);
   });
@@ -1633,7 +1687,7 @@ function renderTweetCard({ kind, post, by }) {
           <span class="time">${timeAgo(post.createdAt)}</span>
         </div>
         ${replyContext}
-        <div class="text">${escapeHtml(post.text)}</div>
+        <div class="text">${renderPostText(post.text)}</div>
         <div class="actions">
           <button class="action reply" data-act="reply" data-id="${post.id}">
             <span class="icon-wrap"><svg viewBox="0 0 24 24"><path d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z"/></svg></span>
@@ -1680,6 +1734,18 @@ function wireTweets() {
       else if (btn.dataset.act === 'repost') toggleRepost(post);
       else if (btn.dataset.act === 'reply') openReply(post);
       else if (btn.dataset.act === 'delete') deletePost(post);
+    });
+  });
+  document.querySelectorAll('.mention').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate('profile', { username: el.dataset.user });
+    });
+  });
+  document.querySelectorAll('.hashtag').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate('search', { query: '#' + el.dataset.tag });
     });
   });
 }
@@ -1780,7 +1846,7 @@ function openReply(parent) {
             <span class="dot">·</span>
             <span class="time">${timeAgo(parent.createdAt)}</span>
           </div>
-          <div class="text">${escapeHtml(parent.text)}</div>
+          <div class="text">${renderPostText(parent.text)}</div>
           <div class="reply-context" style="margin-top:8px">Replying to <a style="color:var(--accent)">@${escapeHtml(author.username)}</a></div>
         </div>
       </div>
@@ -1802,6 +1868,15 @@ function openReply(parent) {
   $('compose-modal').classList.add('show');
   setTimeout(() => $('reply-text').focus(), 50);
   wireCompose($('reply-text'), $('reply-submit'), $('reply-count'), parent.id);
+  // Wire up mention/hashtag clicks in the parent post preview
+  $('compose-modal-body').querySelectorAll('.mention, .hashtag').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeComposeModal();
+      if (el.classList.contains('mention')) navigate('profile', { username: el.dataset.user });
+      else navigate('search', { query: '#' + el.dataset.tag });
+    });
+  });
 }
 
 function closeComposeModal() { $('compose-modal').classList.remove('show'); }
@@ -2171,23 +2246,26 @@ function renderSettings() {
 
 function renderSearch() {
   const main = $('main-content');
+  const initialQuery = pendingSearchQuery || '';
+  pendingSearchQuery = null;
   main.innerHTML = `
     <div class="top-bar">
       <h2>Search</h2>
     </div>
     <div class="search-wrap">
-      <input type="text" class="search-input" id="search-input" placeholder="Search posts and people" autocomplete="off" />
+      <input type="text" class="search-input" id="search-input" placeholder="Search posts and people" autocomplete="off" value="${escapeHtml(initialQuery)}" />
     </div>
     <div id="search-results">
       <div class="empty">
         <h3>Find what's happening</h3>
-        <p>Search for people by name or username, or for any post by its text.</p>
+        <p>Search for people by name or username, or for any post by its text. Try a hashtag like #news.</p>
       </div>
     </div>
   `;
   const input = $('search-input');
   input.focus();
   input.addEventListener('input', performSearch);
+  if (initialQuery) performSearch();
 }
 
 function performSearch() {
@@ -2295,11 +2373,19 @@ function renderAdmin() {
         <input type="file" id="import-data-file" accept=".json,application/json" style="display:none" />
       </div>
       <p style="font-size:13px;color:var(--muted);margin-top:10px">${Object.keys(db.users).length} account${Object.keys(db.users).length === 1 ? '' : 's'}, ${db.posts.filter(p => !p.deleted).length} post${db.posts.filter(p => !p.deleted).length === 1 ? '' : 's'} on this device.</p>
-      <p style="font-size:13px;color:${CLOUD_ENABLED ? 'var(--repost)' : 'var(--muted)'};margin-top:6px">
-        ${CLOUD_ENABLED
-          ? '☁️ Cloud sync: ON — all devices share the same data automatically'
-          : 'Cloud sync: OFF — open index.html, fill in CLOUD.binId and CLOUD.masterKey at the top of the script to enable cross-device sync. See the comment above for setup steps.'}
-      </p>
+      ${CLOUD_ENABLED ? `
+        <p style="font-size:13px;margin-top:6px;color:${lastSyncError ? 'var(--danger)' : 'var(--repost)'}">
+          ${lastSyncError
+            ? '⚠️ Cloud sync: ERROR — ' + escapeHtml(lastSyncError)
+            : '☁️ Cloud sync: ON — devices share the same data'}
+        </p>
+        ${lastSyncSuccess ? `<p style="font-size:12px;color:var(--muted);margin-top:4px">Last successful sync: ${timeAgo(lastSyncSuccess)} ago</p>` : ''}
+        <button class="save-btn" id="sync-now-btn" style="margin-top:10px">Sync now</button>
+      ` : `
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">
+          Cloud sync: OFF — fill in CLOUD.binId and CLOUD.masterKey near the top of index.html to enable cross-device sync.
+        </p>
+      `}
     </div>
   `;
 
@@ -2371,6 +2457,37 @@ function renderAdmin() {
     URL.revokeObjectURL(url);
     showToast('Exported');
   });
+  const syncNowBtn = $('sync-now-btn');
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener('click', async () => {
+      syncNowBtn.disabled = true;
+      syncNowBtn.textContent = 'Syncing…';
+      const remote = await cloudPull();
+      if (remote) {
+        db.users = remote.users || {};
+        db.posts = Array.isArray(remote.posts) ? remote.posts : [];
+        for (const u of Object.values(db.users)) {
+          if (typeof u.isAdmin === 'undefined') u.isAdmin = false;
+          if (typeof u.affiliatedTo === 'undefined') u.affiliatedTo = null;
+          if (typeof u.avatarImage === 'undefined') u.avatarImage = null;
+          if (typeof u.avatarColor === 'undefined') u.avatarColor = null;
+          if (!Array.isArray(u.following)) u.following = [];
+          if (typeof u.banned === 'undefined') u.banned = false;
+          if (typeof u.kickedAt === 'undefined') u.kickedAt = 0;
+        }
+        storage.set(DB_KEY, JSON.stringify(db));
+        currentUser = db.users[getSession()] || currentUser;
+        renderMeCard();
+        renderRightSidebar();
+        renderAdmin();
+        showToast('Synced');
+      } else {
+        syncNowBtn.disabled = false;
+        syncNowBtn.textContent = 'Sync now';
+        showToast('Sync failed: ' + (lastSyncError || 'unknown'));
+      }
+    });
+  }
   $('import-data-btn').addEventListener('click', () => $('import-data-file').click());
   $('import-data-file').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -2448,7 +2565,24 @@ function renderRightSidebar() {
    Boot
    ========================================================= */
 (async function boot() {
-  if (CLOUD_ENABLED) {
+  if (_pendingCloudWipe && CLOUD_ENABLED) {
+    // Version bumped — also wipe the cloud bin so other devices reset too
+    db.users = {};
+    db.posts = [];
+    storage.set(DB_KEY, JSON.stringify(db));
+    try {
+      await fetch(`https://api.jsonbin.io/v3/b/${CLOUD.binId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': CLOUD.masterKey
+        },
+        body: JSON.stringify({ users: {}, posts: [] })
+      });
+      lastSyncSuccess = Date.now();
+    } catch (e) { console.warn('Reset push failed:', e); }
+    _pendingCloudWipe = false;
+  } else if (CLOUD_ENABLED) {
     const remote = await cloudPull();
     if (remote) {
       db.users = remote.users || {};
